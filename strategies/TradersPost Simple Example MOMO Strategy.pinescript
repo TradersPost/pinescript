@@ -1,0 +1,24 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradersPostInc
+
+//@version=5
+strategy('TradersPost Example MOMO Strategy', overlay=true)
+
+ema8 = ta.ema(close, 8)
+ema21 = ta.ema(close, 21)
+
+isUptrend = ema8 >= ema21
+isDowntrend = ema8 <= ema21
+trendChanging = ta.cross(ema8, ema21)
+
+tradersPostBuy = trendChanging and isUptrend
+tradersPostSell = trendChanging and isDowntrend
+
+buyAlertMessage = '{"ticker": "' + syminfo.ticker + '", "action": "buy", "price": ' + str.tostring(close) + '}'
+sellAlertMessage = '{"ticker": "' + syminfo.ticker + '", "action": "sell", "price": ' + str.tostring(close) + '}'
+
+if tradersPostBuy
+    strategy.entry("Long", strategy.long, alert_message = buyAlertMessage)
+
+if tradersPostSell
+    strategy.close("Long", when = open[0], alert_message = sellAlertMessage)

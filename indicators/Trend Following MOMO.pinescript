@@ -1,24 +1,24 @@
-//@version=4
+//@version=5
 //author = https://www.tradingview.com/u/MattDeLong/
 
-study("Trend Following MOMO", overlay=true)
+indicator('Trend Following MOMO', overlay=true)
 
-ema8 = ema(close, 8)
-ema21 = ema(close, 21)
+ema8 = ta.ema(close, 8)
+ema21 = ta.ema(close, 21)
 
 isUptrend = ema8 >= ema21
 isDowntrend = ema8 <= ema21
-trendChanging = cross(ema8, ema21)
+trendChanging = ta.cross(ema8, ema21)
 
 tradersPostBuy = trendChanging and isUptrend
 tradersPostSell = trendChanging and isDowntrend
 
-plotshape(tradersPostBuy, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text='Buy')
-plotshape(tradersPostSell, style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small, text='Sell')
+plotshape(tradersPostBuy, style=shape.triangleup, location=location.belowbar, color=color.new(color.green, 0), size=size.small, text='Buy')
+plotshape(tradersPostSell, style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small, text='Sell')
 
-aa = plot(ema8, linewidth=3, color=color.green, editable=true, title="ema8")
-bb = plot(ema21,linewidth=3, color=color.red, editable=true, title="ema21")
-fill(aa, bb, color=isUptrend ? color.green : color.red)
+aa = plot(ema8, linewidth=3, color=color.new(color.green, 0), editable=true, title='ema8')
+bb = plot(ema21, linewidth=3, color=color.new(color.red, 0), editable=true, title='ema21')
+fill(aa, bb, color=isUptrend ? color.green : color.red, transp=90)
 
-alertcondition(tradersPostBuy, title="TradersPost Buy Alert", message="{\"ticker\": \"{{ticker}}\", \"action\": \"buy\", \"price\": {{close}}}")
-alertcondition(tradersPostSell, title="TradersPost Sell Alert", message="{\"ticker\": \"{{ticker}}\", \"action\": \"sell\", \"price\": {{close}}}")
+alertcondition(tradersPostBuy, title='TradersPost Buy Alert', message='{"ticker": "{{ticker}}", "action": "buy", "price": {{close}}}')
+alertcondition(tradersPostSell, title='TradersPost Sell Alert', message='{"ticker": "{{ticker}}", "action": "sell", "price": {{close}}}')

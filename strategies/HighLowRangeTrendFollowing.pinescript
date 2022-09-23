@@ -1,0 +1,33 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradersPostInc
+// Visit https://traderspost.io to automate your TradingView strategies at top brokers TD Ameritrade, TradeStation, and Alpaca.
+
+// Thesis: 
+// We're searching for big range bars and if the momentum is in a positive direction, then we buy.
+// When a range bar is found and the trend is in the opposite direction, we sell.
+// Full credit to Kevin Davey for his work on basic strategies.
+
+//@version=5
+strategy("TradersPost High-Low Range Strategy", overlay=false, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
+
+rrange = high-low
+lookback = input.int(2, minval=1, title="Lookback")
+xr = input.int(10, minval=1, title="Range Length")
+mult = input.float(2.0, minval=0.001, maxval=50, title="SD")
+
+computation = mult * ta.stdev(rrange, xr) + ta.sma(rrange, xr)
+cond1 = rrange > computation
+
+plot(rrange, title="Range H-L", style=plot.style_columns)
+plot(computation, title="H-L SD", style=plot.style_line, color=color.orange)
+plot(close - close[lookback], title="Close Direction", color=close > close[lookback] ? color.green : color.red, style=plot.style_histogram)
+
+longCondition =  cond1 and close > close[lookback]
+if (longCondition)
+    strategy.entry("Long entry", strategy.long)
+    alert("Long entry", freq = alert.freq_once_per_bar_close)
+
+shortCondition = cond1 and close < close[lookback]
+if (shortCondition)
+    strategy.close_all("Close all positions", immediately = true)
+    alert("Close all positions", freq = alert.freq_once_per_bar_close)

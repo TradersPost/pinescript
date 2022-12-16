@@ -1,0 +1,274 @@
+//@version=5
+strategy("8-55 EMA Crossover NQ Futures Strategy", shorttitle="8-55 Cross", overlay=true, initial_capital = 5000, pyramiding = 1, default_qty_type = strategy.fixed, default_qty_value = 1, calc_on_every_tick = false, process_orders_on_close = true, use_bar_magnifier = true, commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 5)
+max_bars_back(time, 5000)
+strategy.risk.max_intraday_filled_orders(10)
+
+// establish trading times
+tradeTimes = input.session("0900-1455", title="Trading Times")
+
+InSession(sessionTimes) =>
+    not na(time(timeframe.period, sessionTimes))
+
+bgcolor(color=InSession(tradeTimes) ? color.new(color.green, 90) : color.new(color.white, 99))
+
+// === INPUT BACKTEST RANGE ===
+fromMonth = input.int(defval = 1,    title = "From Month",  minval = 1, maxval = 12)
+fromDay   = input.int(defval = 1,    title = "From Day",    minval = 1, maxval = 31)
+fromYear  = input.int(defval = 2018, title = "From Year",   minval = 1970)
+thruMonth = input.int(defval = 1,    title = "Thru Month",  minval = 1, maxval = 12)
+thruDay   = input.int(defval = 1,    title = "Thru Day",    minval = 1, maxval = 31)
+thruYear  = input.int(defval = 2112, title = "Thru Year",   minval = 1970)
+start     = timestamp(fromYear, fromMonth, fromDay, 00, 00)            // backtest start  window
+finish    = timestamp(thruYear, thruMonth, thruDay, 23, 59)            // backtest finish window
+window()  => time >= start and time <= finish ? true : false           // create function "within window of time"
+
+allow_long = input.bool(1, title="Allow Longs")
+allow_short = input.bool(0, title="Allow Shorts")
+
+longTrailPerc = input.float(title="Trail Long Loss (%)", minval=0.0, step=0.1, defval=0.7) * 0.01
+shortTrailPerc = input.float(title="Trail Short Loss (%)", minval=0.0, step=0.1, defval=1) * 0.01
+
+longStopPrice = 0.0, shortStopPrice = 0.0
+
+//emas ------------------------------------------
+
+ema1len = input.int(8, minval=1, title="EMA 1 Length")
+ema2len = input.int(55, minval=1, title="EMA 2 Length")
+src = input(close, title="EMA Source")
+
+// set up ema 1 and 2
+ema1 = ta.ema(src, ema1len)
+ema2 = ta.ema(src, ema2len)
+// check 15 minute EMA
+ema15step = request.security(syminfo.tickerid, "15", ta.ema(close, ema2len), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+
+//establish direction (1 == long, 0 == short, -1 == no trade)
+trade_direction = ema2 >= ema15step and ema1 > ema2 ? 1 : ema2 <= ema15step and ema1 < ema2 ? 0 : -1
+plot(trade_direction, title="trade_direction", display = display.data_window)
+
+//col = ema1 > ema15step ? color.lime : ema1 < ema15step ? color.red : color.yellow
+col = trade_direction == 1 ? color.lime : trade_direction == 0 ? color.red : color.yellow
+plot(ema1, title = "EMA Short", color=col, linewidth = 1, display = display.pane)
+plot(ema2, title = "EMA Long", color=col, linewidth = 2, display = display.pane)
+plot(ema15step, title = "15 Minute EMA", color=col, linewidth=3, style = plot.style_stepline, display = display.pane)
+
+//conditions ------------------------------------------
+
+// direction change bars
+direction_change_bars = ta.barssince(trade_direction != trade_direction[1])
+plot(direction_change_bars, title="direction_change_bars", display = display.data_window)
+// last long or short direction
+direction_long_bars = ta.barssince(trade_direction == 1)
+direction_short_bars = ta.barssince(trade_direction == 0)
+plot(direction_long_bars, title="direction_long_bars", display = display.data_window)
+plot(direction_short_bars, title="direction_short_bars", display = display.data_window)
+
+// must retest 55 ema within direction change window
+long_ema2_retest_bars = ta.barssince(low < ema2)
+plot(long_ema2_retest_bars, title="long_ema2_retest_bars", display = display.data_window)
+short_ema2_retest_bars = ta.barssince(high > ema2)
+plot(short_ema2_retest_bars, title="short_ema2_retest_bars", display = display.data_window)
+
+// take trade above ema1 within 5 bars of 55 ema retest
+long_close_above_ema1 = close > ema1 ? 1 : 0
+long_close_crosses_ema1 = ta.crossover(close, ema1)
+plot(long_close_above_ema1, title="long_close_above_ema1", display = display.data_window)
+short_close_below_ema1 = close < ema1 ? 1 : 0
+plot(short_close_below_ema1, title="short_close_below_ema1", display = display.data_window)
+
+//pivot conditions  ------------------------------------------
+
+lengthGroupTitle = "LENGTH LEFT / RIGHT"
+colorGroupTitle = "Text Color / Label Color"
+leftLenH = input.int(title="Pivot High", defval=10, minval=1, inline="Pivot High", group=lengthGroupTitle)
+rightLenH = input.int(title="/", defval=10, minval=1, inline="Pivot High", group=lengthGroupTitle)
+textColorH = input(title="Pivot High", defval=color.black, inline="Pivot High", group=colorGroupTitle)
+labelColorH = input(title="", defval=color.white, inline="Pivot High", group=colorGroupTitle)
+
+leftLenL = input.int(title="Pivot Low", defval=10, minval=1, inline="Pivot Low", group=lengthGroupTitle)
+rightLenL = input.int(title="/", defval=10, minval=1, inline="Pivot Low", group=lengthGroupTitle)
+textColorL = input(title="Pivot Low", defval=color.black, inline="Pivot Low", group=colorGroupTitle)
+labelColorL = input(title="", defval=color.white, inline="Pivot Low", group=colorGroupTitle)
+
+var float ph = na
+var float ph1 = na
+var float pl = na
+var float pl1 = na
+
+_ph = ta.pivothigh(leftLenH, rightLenH)
+_pl = ta.pivotlow(leftLenL, rightLenL)
+
+if (not na(_ph))
+    ph1 := ph
+    ph := _ph
+
+if (not na(_pl))
+    pl1 := pl
+    pl := _pl
+
+ph_bar = ta.barssince(not na(_ph)) + leftLenH + 1
+plot(ph_bar, title="ph_bar", display = display.data_window)
+
+pl_bar = ta.barssince(not na(_pl)) + leftLenH + 1
+plot(pl_bar, title="pl_bar", display = display.data_window)
+
+drawLabel(_offset, _pivot, _style, _color, _textColor) =>
+    if not na(_pivot)
+        label.new(bar_index[_offset], _pivot, str.tostring(_pivot, format.mintick), style=_style, color=_color, textcolor=_textColor, size=size.tiny)
+
+// drawLabel(rightLenH, _ph, label.style_label_down, labelColorH, textColorH)
+// drawLabel(rightLenL, _pl, label.style_label_up, labelColorL, textColorL)
+
+// find recent high if higher than pivot
+float rh = na
+float rl = na
+if (ph_bar > 0)
+    rh := ta.highest(high, ph_bar)
+if (pl_bar > 0)
+    rl := ta.lowest(low, pl_bar)
+
+retest_high = ta.valuewhen(high > ema2, high, 0)
+retest_low = ta.valuewhen(low < ema2, low, 0)
+
+bar_high1 = ta.highest(high, 20)
+bar_high2 = ta.highest(high, 40)
+bar_low1 = ta.lowest(low, 20)
+bar_low2 = ta.lowest(low, 40)
+
+plot(retest_low, title="retest_low", display = display.data_window)
+plot(bar_high1, title="bar_high1", display = display.data_window)
+plot(bar_high2, title="bar_high2", display = display.data_window)
+plot(rh, title="rh", display = display.data_window)
+plot(_ph, title="_ph", display = display.data_window)
+plot(ph, title="ph", display = display.data_window)
+plot(ph1, title="ph1", display = display.data_window)
+
+plot(retest_high, title="retest_high", display = display.data_window)
+plot(bar_low1, title="bar_low1", display = display.data_window)
+plot(bar_low2, title="bar_low2", display = display.data_window)
+plot(rl, title="rl", display = display.data_window)
+plot(_pl, title="_pl", display = display.data_window)
+plot(pl, title="pl", display = display.data_window)
+plot(pl1, title="pl1", display = display.data_window)
+
+long_ph_delta = (ph / ph1 - 1) * 100
+plot(long_ph_delta, title="long_ph_delta", display = display.data_window)
+
+short_pl_delta = (pl / pl1 - 1) * 100
+plot(short_pl_delta, title="short_pl_delta", display = display.data_window)
+
+// long recent high must be greater than previous high
+// short recent low must be lower than previous low
+
+BarsSinceLastEntry() =>
+    bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1) 
+
+// fib calcs -----------------------------------------------
+
+// levels: 0.000, 0.236, 0.382, 0.500, 0.618, 0.786, 0.886, 1.000
+FibRetraceUp(lower, upper, level) => 
+    upper * math.pow(lower/upper, level)
+FibRetraceDown(upper, lower, level) => 
+    lower * math.pow(upper/lower, level)
+FibExtendUp(a, b, c, level) =>
+    dist = b-a
+    c + level * dist
+
+// ema15step rule violation
+
+all_emas_crossed_bars = ta.barssince(low < ema1 and low < ema2 and low < ema15step)
+plot(all_emas_crossed_bars, title="all_emas_crossed_bars", display = display.data_window)
+
+//long fib trade  ------------------------------------------
+
+// plot(FibRetraceUp(pl, ph, 0.618), title="fib_entry")
+// plot(FibRetraceUp(pl, ph, 1.2), title="fib_sl")
+// plot(FibExtendUp(pl1, ph, pl, 1.2), title="fib_tp")
+
+//plotchar(trade_direction != 0 and high < ema1 and high >= ema15step, "Wrong Pivot High", "⬇", location.abovebar, color.purple, size=size.normal)
+
+// ------------------------------
+
+HigherHighConfirmed(bar_high1, rh, ph, ph1) =>
+    if (bar_high1 > rh and bar_high1 > ph)
+        bar_high1 > ph1
+    else if (rh > ph)
+        rh > ph1
+    else
+        ph > ph1
+
+higher_high_confirmed = HigherHighConfirmed(bar_high1, rh, ph, ph1) ? 1 : 0
+//higher_high_confirmed = ten_bar_high > ph and ten_bar_high > ph1 ? 1 : 0
+//higher_high_confirmed = bar_high1 > bar_high2 ? 1 : 0
+plot(higher_high_confirmed, "higher_high_confirmed", display = display.data_window)
+
+LowerLowConfirmed(rl, pl, pl1) =>
+    if (rl < pl)
+        rl < pl1
+    else
+        pl < pl1
+
+lower_low_confirmed = LowerLowConfirmed(rl, pl, pl1) ? 1 : 0
+plot(lower_low_confirmed, "lower_low_confirmed", display = display.data_window)
+
+// //long trade  ------------------------------------------
+
+// must trade in session
+l_cond1 = InSession(tradeTimes) and window()
+//must be a long trade direction
+l_cond2 = trade_direction == 1
+//must have retested within the last x bars
+l_cond3 = long_ema2_retest_bars > 0 and long_ema2_retest_bars < 6
+//must be closed above the ema1
+l_cond4 = long_close_above_ema1 == 1
+
+plotchar(l_cond1 and l_cond2 and l_cond3 and l_cond4, "ENTRY", "◆", location.abovebar, color.green, size = size.tiny)
+
+if (allow_long == true and l_cond1 and l_cond2 and l_cond3 and l_cond4)
+    alert("Long Indicator", alert.freq_once_per_bar_close)
+    strategy.entry("Long Entry", strategy.long)
+
+longStopPrice := if (strategy.position_size > 0)
+    stopValue = close * (1 - longTrailPerc)
+    math.max(stopValue, longStopPrice[1])
+else
+    0
+
+plot(series=(strategy.position_size > 0) ? longStopPrice : na, color=color.fuchsia, style=plot.style_cross, linewidth=1, title="Long Trail Stop")
+
+if (strategy.position_size > 0)
+    strategy.exit(id="XL TRL STP", stop=longStopPrice)
+
+if (strategy.opentrades > 0 and strategy.opentrades.size(0) > 0 and trade_direction == 0)
+    strategy.close_all()
+
+// //short trade  ------------------------------------------
+
+// must trade in session
+s_cond1 = InSession(tradeTimes) and window()
+// must be a short trade direction
+s_cond2 = trade_direction == 0
+// must have retested in the last x bars
+s_cond3 = short_ema2_retest_bars > 0 and short_ema2_retest_bars < 6
+// must close below the ema1
+s_cond4 = short_close_below_ema1 == 1
+
+plotchar(s_cond1 and s_cond2 and s_cond3 and s_cond4, "ENTRY", "◆", location.belowbar, color.red, size = size.tiny)
+
+if (allow_short == true and s_cond1 and s_cond2 and s_cond3 and s_cond4)
+    alert("Short Indicator", alert.freq_once_per_bar_close)
+    strategy.entry("Short Entry", strategy.short)
+
+shortStopPrice := if (strategy.position_size < 0)
+    stopValue = close * (1 + shortTrailPerc)
+    math.min(stopValue, shortStopPrice[1])
+else
+    9999999
+
+plot(series=(strategy.position_size < 0) ? shortStopPrice : na, color=color.fuchsia, style=plot.style_cross, linewidth=1, title="Short Trail Stop")
+
+if (strategy.position_size < 0)
+    strategy.exit(id="XS TRL STP", stop=shortStopPrice)
+
+if (strategy.opentrades > 0 and strategy.opentrades.size(0) < 0 and trade_direction == 1)
+    strategy.close_all()

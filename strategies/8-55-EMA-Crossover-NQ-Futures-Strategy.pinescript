@@ -1,5 +1,5 @@
 //@version=5
-strategy("8-55 EMA Crossover NQ Futures Strategy", shorttitle="8-55 Cross", overlay=true, initial_capital = 5000, pyramiding = 1, default_qty_type = strategy.fixed, default_qty_value = 1, calc_on_every_tick = false, process_orders_on_close = true, use_bar_magnifier = true, commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 5)
+strategy("8-55 EMA Crossover NQ Futures Strategy", shorttitle="8-55 Cross", overlay=true, initial_capital = 5000, pyramiding = 1, default_qty_type = strategy.fixed, default_qty_value = 1, calc_on_every_tick = false, process_orders_on_close = true, use_bar_magnifier = false, commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 5)
 max_bars_back(time, 5000)
 strategy.risk.max_intraday_filled_orders(10)
 

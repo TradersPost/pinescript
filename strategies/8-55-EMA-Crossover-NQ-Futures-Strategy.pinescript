@@ -1,46 +1,128 @@
-//@version=5
-strategy("8-55 EMA Crossover NQ Futures Strategy", shorttitle="8-55 Cross", overlay=true, initial_capital = 5000, pyramiding = 1, default_qty_type = strategy.fixed, default_qty_value = 1, calc_on_every_tick = false, process_orders_on_close = true, use_bar_magnifier = false, commission_type = strategy.commission.cash_per_contract, commission_value = 0.5, slippage = 5)
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// An Example Futures Strategy Built by Mike Christensen with TradersPost.io (@Mik3Christ3ns3n)
+
+// DISCLAIMER: Trading in the financial markets involves a risk of loss.  Content and strategies produced
+// by TradersPost are for informational or educational purposes only and do not constitute trading or
+// investment recommendations or advice.
+
+// @version=5
+strategy("8-55 EMA Crossover NQ/MNQ Futures Strategy", shorttitle="8-55 Cross", overlay=true, initial_capital = 5000, pyramiding = 1, default_qty_type = strategy.fixed, default_qty_value = 1, calc_on_every_tick = false, process_orders_on_close = false, use_bar_magnifier = false, commission_type = strategy.commission.cash_per_contract, commission_value = 0.82, slippage = 5)
 max_bars_back(time, 5000)
 strategy.risk.max_intraday_filled_orders(10)
 
-// establish trading times
-tradeTimes = input.session("0900-1455", title="Trading Times")
+// ===============
+// ==== Notes ====
+// ===============
+
+// This is an example strategy built to showcase the automation capabilities of TradersPost in
+// trading Nasdaq 100 NQ and MNQ futures on the 5, 30, and 60 minute interval.
+
+// Always paper trade first! Before running ANY strategy with live capital, always create a free
+// TradersPost paper trading broker connection and let the strategy trade for at least two weeks
+// before subscribing the strategy to a live broker. This will give you time to see how the
+// trades behave and catch any unexpected behavior.
+
+// ==========================================
+// ==== Attaching a Broker Trailing Stop ====
+// ==========================================
+
+// This strategy has a built-in trailing stop, but if you prefer to have the trailing stop attached
+// to your entry order with the broker, you can enable this feature in the strategy settings.
+
+// =====================================
+// ==== Automating with TradersPost ====
+// =====================================
+
+// You can automate this strategy with any paper or live broker that supports futures on TradersPost.
+// Create an alert for this strategy and under Condition ensure it is set to: "alert() function calls only",
+// then supply your TradersPost webhook URL under the Notifications tab.
+
+// Using any other alert condition besides "alert() function calls only" could result in duplicated trades.
+
+// ===========================
+// ==== Backtest Settings ====
+// ===========================
+
+var group1 = "Backtest Range"
+fromMonth = input.int(defval = 1,    title = "From Month",  minval = 1, maxval = 12, inline = "1", group = group1)
+fromDay   = input.int(defval = 1,    title = "Day",    minval = 1, maxval = 31, inline = "1", group = group1)
+fromYear  = input.int(defval = 2018, title = "Year",   minval = 1970, inline = "1", group = group1)
+thruMonth = input.int(defval = 1,    title = "To Month",  minval = 1, maxval = 12, inline = "2", group = group1)
+thruDay   = input.int(defval = 1,    title = "Day",    minval = 1, maxval = 31, inline = "2", group = group1)
+thruYear  = input.int(defval = 2300, title = "Year",   minval = 1970, inline = "2", group = group1)
+
+// =====================
+// ==== Trade Rules ====
+// =====================
+
+var group2 = "Trade Rules"
+tradeTimes = input.session("0900-1455", title="Position Entry Window", group=group2)
+minPrevDayVolume = input.int(defval = 1000, title = "Previous Day Volume Threshold", minval = 1, maxval = 10000000, tooltip = "The minimum contract volume from the previous day to allow trading for today.", group = group2)
+defaultQty = input.int(defval=1, title="Default Contract Quantity", minval = 1, maxval = 10000000, step=1, group=group2, tooltip="The quantity of contracts to buy or sell for the entry. Note: If you have defined the Position size settings in your TradersPost subscription settings, this value is ignored.")
+retestBars = input.int(defval=6, title="Close Above 8 EMA within X Bars", minval = 1, maxval = 10000000, step=1, group=group2, tooltip="When price retraces to the 55 EMA and closes above the 8 EMA, it must do so within a certain number of bars. The default is 6 bars.")
+attachTrail = input.bool(0, title="Attach Broker Trailing Stop", group=group2, tooltip="When using alert() function calls only for your entry alert condition, the strategy will attach trailing stop instructions to your entry order so that the broker handles the trailing stop instead of the strategy. Note: Many brokers use the close price as the trailing stop source. If your trailing stop source is different than what the broker uses, the performance may differ.")
+
+var group3 = "Long Entry Rules"
+allow_long = input.bool(1, title="Allow Longs", group=group3)
+longTrailPerc = input.float(title="Trail Long Loss (%)", minval=0.0, step=0.1, defval=0.75, group = group3) * 0.01
+longTrailSrc = input.source(close, title="Trail Long Source", group=group3, tooltip = "Price to observe when lifting the trailing stop. Typically this is set to the close price. Note: This value is ignored if you attach the broker trailing stop.")
+
+var group4 = "Short Entry Rules"
+allow_short = input.bool(0, title="Allow Shorts", group=group4)
+shortTrailPerc = input.float(title="Trail Short Loss (%)", minval=0.0, step=0.1, defval=1, group = group4) * 0.01
+shortTrailSrc = input.source(close, title="Trail Short Source", group=group4, tooltip = "Price to observe when lowering the trailing stop. Typically this is set to the close price. Note: This value is ignored if you attach the broker trailing stop.")
 
 InSession(sessionTimes) =>
     not na(time(timeframe.period, sessionTimes))
 
 bgcolor(color=InSession(tradeTimes) ? color.new(color.green, 90) : color.new(color.white, 99))
 
-// === INPUT BACKTEST RANGE ===
-fromMonth = input.int(defval = 1,    title = "From Month",  minval = 1, maxval = 12)
-fromDay   = input.int(defval = 1,    title = "From Day",    minval = 1, maxval = 31)
-fromYear  = input.int(defval = 2018, title = "From Year",   minval = 1970)
-thruMonth = input.int(defval = 1,    title = "Thru Month",  minval = 1, maxval = 12)
-thruDay   = input.int(defval = 1,    title = "Thru Day",    minval = 1, maxval = 31)
-thruYear  = input.int(defval = 2112, title = "Thru Year",   minval = 1970)
+// ============================
+// ==== Indicator Settings ====
+// ============================
+
+var group5 = "Indicator Settings"
+ema1len = input.int(8, minval=1, title="5m EMA 1 Length", group = group5)
+ema2len = input.int(55, minval=1, title="5m EMA 2 Length", group = group5)
+ema15len = input.int(165, minval=1, title="15m EMA Length", group = group5, tooltip = "Should be 3x the 5 minute 55 EMA length.")
+src = input(close, title="EMA Source", group = group5)
+
+show_pivot_labels = input.bool(0, title="Show Pivot Points", group = group5)
+
 start     = timestamp(fromYear, fromMonth, fromDay, 00, 00)            // backtest start  window
 finish    = timestamp(thruYear, thruMonth, thruDay, 23, 59)            // backtest finish window
 window()  => time >= start and time <= finish ? true : false           // create function "within window of time"
 
-allow_long = input.bool(1, title="Allow Longs")
-allow_short = input.bool(0, title="Allow Shorts")
-
-longTrailPerc = input.float(title="Trail Long Loss (%)", minval=0.0, step=0.1, defval=0.7) * 0.01
-shortTrailPerc = input.float(title="Trail Short Loss (%)", minval=0.0, step=0.1, defval=1) * 0.01
-
 longStopPrice = 0.0, shortStopPrice = 0.0
 
-//emas ------------------------------------------
+volume_yesterday = request.security(syminfo.tickerid, "1D", volume[1])
+plot(volume_yesterday, title = "volume_yesterday", display = display.data_window)
 
-ema1len = input.int(8, minval=1, title="EMA 1 Length")
-ema2len = input.int(55, minval=1, title="EMA 2 Length")
-src = input(close, title="EMA Source")
+//previous day low used to filter short side
+yesterday_low = request.security(syminfo.tickerid, 'D', low[1])
+plot(yesterday_low, title="yesterday_low", display = display.data_window)
+
+lengthGroupTitle = "LENGTH LEFT / RIGHT"
+colorGroupTitle = "Text Color / Label Color"
+leftLenH = input.int(title="Pivot High", defval=10, minval=1, inline="Pivot High", group=lengthGroupTitle)
+rightLenH = input.int(title="/", defval=10, minval=1, inline="Pivot High", group=lengthGroupTitle)
+textColorH = input(title="Pivot High", defval=color.black, inline="Pivot High", group=colorGroupTitle)
+labelColorH = input(title="", defval=color.white, inline="Pivot High", group=colorGroupTitle)
+
+leftLenL = input.int(title="Pivot Low", defval=10, minval=1, inline="Pivot Low", group=lengthGroupTitle)
+rightLenL = input.int(title="/", defval=10, minval=1, inline="Pivot Low", group=lengthGroupTitle)
+textColorL = input(title="Pivot Low", defval=color.black, inline="Pivot Low", group=colorGroupTitle)
+labelColorL = input(title="", defval=color.white, inline="Pivot Low", group=colorGroupTitle)
+
+// ================================
+// ==== EMA Indicator Settings ====
+// ================================
 
 // set up ema 1 and 2
 ema1 = ta.ema(src, ema1len)
 ema2 = ta.ema(src, ema2len)
 // check 15 minute EMA
-ema15step = request.security(syminfo.tickerid, "15", ta.ema(close, ema2len), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+ema15step = ta.ema(src, ema15len)
 
 //establish direction (1 == long, 0 == short, -1 == no trade)
 trade_direction = ema2 >= ema15step and ema1 > ema2 ? 1 : ema2 <= ema15step and ema1 < ema2 ? 0 : -1
@@ -52,7 +134,9 @@ plot(ema1, title = "EMA Short", color=col, linewidth = 1, display = display.pane
 plot(ema2, title = "EMA Long", color=col, linewidth = 2, display = display.pane)
 plot(ema15step, title = "15 Minute EMA", color=col, linewidth=3, style = plot.style_stepline, display = display.pane)
 
-//conditions ------------------------------------------
+// =======================
+// ==== Trading Logic ====
+// =======================
 
 // direction change bars
 direction_change_bars = ta.barssince(trade_direction != trade_direction[1])
@@ -75,20 +159,6 @@ long_close_crosses_ema1 = ta.crossover(close, ema1)
 plot(long_close_above_ema1, title="long_close_above_ema1", display = display.data_window)
 short_close_below_ema1 = close < ema1 ? 1 : 0
 plot(short_close_below_ema1, title="short_close_below_ema1", display = display.data_window)
-
-//pivot conditions  ------------------------------------------
-
-lengthGroupTitle = "LENGTH LEFT / RIGHT"
-colorGroupTitle = "Text Color / Label Color"
-leftLenH = input.int(title="Pivot High", defval=10, minval=1, inline="Pivot High", group=lengthGroupTitle)
-rightLenH = input.int(title="/", defval=10, minval=1, inline="Pivot High", group=lengthGroupTitle)
-textColorH = input(title="Pivot High", defval=color.black, inline="Pivot High", group=colorGroupTitle)
-labelColorH = input(title="", defval=color.white, inline="Pivot High", group=colorGroupTitle)
-
-leftLenL = input.int(title="Pivot Low", defval=10, minval=1, inline="Pivot Low", group=lengthGroupTitle)
-rightLenL = input.int(title="/", defval=10, minval=1, inline="Pivot Low", group=lengthGroupTitle)
-textColorL = input(title="Pivot Low", defval=color.black, inline="Pivot Low", group=colorGroupTitle)
-labelColorL = input(title="", defval=color.white, inline="Pivot Low", group=colorGroupTitle)
 
 var float ph = na
 var float ph1 = na
@@ -116,8 +186,9 @@ drawLabel(_offset, _pivot, _style, _color, _textColor) =>
     if not na(_pivot)
         label.new(bar_index[_offset], _pivot, str.tostring(_pivot, format.mintick), style=_style, color=_color, textcolor=_textColor, size=size.tiny)
 
-// drawLabel(rightLenH, _ph, label.style_label_down, labelColorH, textColorH)
-// drawLabel(rightLenL, _pl, label.style_label_up, labelColorL, textColorL)
+if show_pivot_labels
+    drawLabel(rightLenH, _ph, label.style_label_down, labelColorH, textColorH)
+    drawLabel(rightLenL, _pl, label.style_label_up, labelColorL, textColorL)
 
 // find recent high if higher than pivot
 float rh = na
@@ -135,40 +206,40 @@ bar_high2 = ta.highest(high, 40)
 bar_low1 = ta.lowest(low, 20)
 bar_low2 = ta.lowest(low, 40)
 
-plot(retest_low, title="retest_low", display = display.data_window)
-plot(bar_high1, title="bar_high1", display = display.data_window)
-plot(bar_high2, title="bar_high2", display = display.data_window)
-plot(rh, title="rh", display = display.data_window)
-plot(_ph, title="_ph", display = display.data_window)
-plot(ph, title="ph", display = display.data_window)
-plot(ph1, title="ph1", display = display.data_window)
+//plot(retest_low, title="retest_low", display = display.data_window)
+//plot(bar_high1, title="bar_high1", display = display.data_window)
+//plot(bar_high2, title="bar_high2", display = display.data_window)
+//plot(rh, title="rh", display = display.data_window)
+//plot(_ph, title="_ph", display = display.data_window)
+//plot(ph, title="ph", display = display.data_window)
+//plot(ph1, title="ph1", display = display.data_window)
 
-plot(retest_high, title="retest_high", display = display.data_window)
-plot(bar_low1, title="bar_low1", display = display.data_window)
-plot(bar_low2, title="bar_low2", display = display.data_window)
-plot(rl, title="rl", display = display.data_window)
-plot(_pl, title="_pl", display = display.data_window)
-plot(pl, title="pl", display = display.data_window)
-plot(pl1, title="pl1", display = display.data_window)
+//plot(retest_high, title="retest_high", display = display.data_window)
+//plot(bar_low1, title="bar_low1", display = display.data_window)
+//plot(bar_low2, title="bar_low2", display = display.data_window)
+//plot(rl, title="rl", display = display.data_window)
+//plot(_pl, title="_pl", display = display.data_window)
+//plot(pl, title="pl", display = display.data_window)
+//plot(pl1, title="pl1", display = display.data_window)
 
 long_ph_delta = (ph / ph1 - 1) * 100
-plot(long_ph_delta, title="long_ph_delta", display = display.data_window)
+//plot(long_ph_delta, title="long_ph_delta", display = display.data_window)
 
 short_pl_delta = (pl / pl1 - 1) * 100
-plot(short_pl_delta, title="short_pl_delta", display = display.data_window)
+//plot(short_pl_delta, title="short_pl_delta", display = display.data_window)
 
 // long recent high must be greater than previous high
 // short recent low must be lower than previous low
 
 BarsSinceLastEntry() =>
-    bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1) 
+    bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1)
 
 // fib calcs -----------------------------------------------
 
 // levels: 0.000, 0.236, 0.382, 0.500, 0.618, 0.786, 0.886, 1.000
-FibRetraceUp(lower, upper, level) => 
+FibRetraceUp(lower, upper, level) =>
     upper * math.pow(lower/upper, level)
-FibRetraceDown(upper, lower, level) => 
+FibRetraceDown(upper, lower, level) =>
     lower * math.pow(upper/lower, level)
 FibExtendUp(a, b, c, level) =>
     dist = b-a
@@ -200,7 +271,7 @@ HigherHighConfirmed(bar_high1, rh, ph, ph1) =>
 higher_high_confirmed = HigherHighConfirmed(bar_high1, rh, ph, ph1) ? 1 : 0
 //higher_high_confirmed = ten_bar_high > ph and ten_bar_high > ph1 ? 1 : 0
 //higher_high_confirmed = bar_high1 > bar_high2 ? 1 : 0
-plot(higher_high_confirmed, "higher_high_confirmed", display = display.data_window)
+//plot(higher_high_confirmed, "higher_high_confirmed", display = display.data_window)
 
 LowerLowConfirmed(rl, pl, pl1) =>
     if (rl < pl)
@@ -209,66 +280,108 @@ LowerLowConfirmed(rl, pl, pl1) =>
         pl < pl1
 
 lower_low_confirmed = LowerLowConfirmed(rl, pl, pl1) ? 1 : 0
-plot(lower_low_confirmed, "lower_low_confirmed", display = display.data_window)
+//plot(lower_low_confirmed, "lower_low_confirmed", display = display.data_window)
 
-// //long trade  ------------------------------------------
+// ===============================
+// ==== Long Trade Conditions ====
+// ===============================
 
+// must meet volume condition
+l_cond0 = volume_yesterday >= minPrevDayVolume
 // must trade in session
 l_cond1 = InSession(tradeTimes) and window()
 //must be a long trade direction
 l_cond2 = trade_direction == 1
 //must have retested within the last x bars
-l_cond3 = long_ema2_retest_bars > 0 and long_ema2_retest_bars < 6
+l_cond3 = long_ema2_retest_bars >= 0 and long_ema2_retest_bars < retestBars
 //must be closed above the ema1
 l_cond4 = long_close_above_ema1 == 1
+//now combined into one condition
+long_condition = l_cond0 and l_cond1 and l_cond2 and l_cond3 and l_cond4
 
-plotchar(l_cond1 and l_cond2 and l_cond3 and l_cond4, "ENTRY", "◆", location.abovebar, color.green, size = size.tiny)
+plotchar(long_condition, "ENTRY", "◆", location.abovebar, color.green, size = size.tiny)
 
-if (allow_long == true and l_cond1 and l_cond2 and l_cond3 and l_cond4)
-    alert("Long Indicator", alert.freq_once_per_bar_close)
-    strategy.entry("Long Entry", strategy.long)
+if (allow_long == true and strategy.opentrades < defaultQty and long_condition)
+    longAlertMessage = '{"ticker": "' + syminfo.ticker + '", "action": "buy", "quantity": ' + str.tostring(defaultQty) + ',"price": ' + str.tostring(close) + (attachTrail == true ? ', "stopLoss": {"type": "trailing_stop", "trailPercent": ' + str.tostring(longTrailPerc * 100) + '}' : '') + '}'
+    alert(longAlertMessage, alert.freq_once_per_bar_close)
+    strategy.entry("Long Entry", direction=strategy.long, qty=defaultQty)
 
+// set up trailing stop for the long
 longStopPrice := if (strategy.position_size > 0)
-    stopValue = close * (1 - longTrailPerc)
+    stopValue = longTrailSrc * (1 - longTrailPerc)
     math.max(stopValue, longStopPrice[1])
 else
     0
 
 plot(series=(strategy.position_size > 0) ? longStopPrice : na, color=color.fuchsia, style=plot.style_cross, linewidth=1, title="Long Trail Stop")
 
+longAlertExitMessage = '{"ticker": "' + syminfo.ticker + '", "action": "exit", "price": ' + str.tostring(close) + '}'
+
+// Trailing stop signal is sent to TradersPost. Be sure your alert uses "alert() function calls only"
+// for this to function properly.
+if (strategy.position_size > 0 and attachTrail == false and low <= longStopPrice)
+    alert(longAlertExitMessage, alert.freq_once_per_bar_close)
+
+// Trailing stop signal is sent to TradingView's backtest.
 if (strategy.position_size > 0)
-    strategy.exit(id="XL TRL STP", stop=longStopPrice)
+    strategy.exit(id="Trailing Exit", stop=longStopPrice)
 
+// Close the long positions if the direction indictator flips to bearish.
+// An exit signal is sent to TradersPost to cancel any existing stop orders and exit the position.
+// If you attached the broker trailing stop, that order will be cancelled.
 if (strategy.opentrades > 0 and strategy.opentrades.size(0) > 0 and trade_direction == 0)
-    strategy.close_all()
+    strategy.close_all("Direction Exit")
+    alert(longAlertExitMessage, alert.freq_once_per_bar_close)
 
-// //short trade  ------------------------------------------
+// ================================
+// ==== Short Trade Conditions ====
+// ================================
 
+// must meet volume condition
+s_cond0 = volume_yesterday >= minPrevDayVolume
 // must trade in session
 s_cond1 = InSession(tradeTimes) and window()
 // must be a short trade direction
 s_cond2 = trade_direction == 0
 // must have retested in the last x bars
-s_cond3 = short_ema2_retest_bars > 0 and short_ema2_retest_bars < 6
+s_cond3 = short_ema2_retest_bars >= 0 and short_ema2_retest_bars < retestBars
 // must close below the ema1
 s_cond4 = short_close_below_ema1 == 1
+// close must be inside the previous day high and low range
+s_cond5 = close >= yesterday_low
+//now combined into one condition
+short_condition = s_cond0 and s_cond1 and s_cond2 and s_cond3 and s_cond4 and s_cond5
 
-plotchar(s_cond1 and s_cond2 and s_cond3 and s_cond4, "ENTRY", "◆", location.belowbar, color.red, size = size.tiny)
+plotchar(short_condition, "ENTRY", "◆", location.belowbar, color.red, size = size.tiny)
 
-if (allow_short == true and s_cond1 and s_cond2 and s_cond3 and s_cond4)
-    alert("Short Indicator", alert.freq_once_per_bar_close)
-    strategy.entry("Short Entry", strategy.short)
+if (allow_short == true and strategy.opentrades < defaultQty and short_condition)
+    shortAlertMessage = '{"ticker": "' + syminfo.ticker + '", "action": "sell", "quantity": ' + str.tostring(defaultQty) + ',"price": ' + str.tostring(close) + (attachTrail == true ? ', "stopLoss": {"type": "trailing_stop", "trailPercent": ' + str.tostring(shortTrailPerc * 100) + '}' : '') + '}'
+    alert(shortAlertMessage, alert.freq_once_per_bar_close)
+    strategy.entry("Short Entry", direction=strategy.short, qty=defaultQty)
 
+// set up trailing stop for the short
 shortStopPrice := if (strategy.position_size < 0)
-    stopValue = close * (1 + shortTrailPerc)
+    stopValue = shortTrailSrc * (1 + shortTrailPerc)
     math.min(stopValue, shortStopPrice[1])
 else
     9999999
 
 plot(series=(strategy.position_size < 0) ? shortStopPrice : na, color=color.fuchsia, style=plot.style_cross, linewidth=1, title="Short Trail Stop")
 
-if (strategy.position_size < 0)
-    strategy.exit(id="XS TRL STP", stop=shortStopPrice)
+shortAlertExitMessage = '{"ticker": "' + syminfo.ticker + '", "action": "exit", "price": ' + str.tostring(close) + '}'
 
+// Trailing stop signal is sent to TradersPost. Be sure your alert uses "alert() function calls only"
+// for this to function properly.
+if (strategy.position_size < 0 and attachTrail == false and high >= shortStopPrice)
+    alert(shortAlertExitMessage, alert.freq_once_per_bar_close)
+
+// Trailing stop signal is sent to TradingView's backtest.
+if (strategy.position_size < 0)
+    strategy.exit(id="Trailing Exit", stop=shortStopPrice)
+
+// Close the short positions if the direction indictator flips to bullish.
+// An exit signal is sent to TradersPost to cancel any existing stop orders and exit the position.
+// If you attached the broker trailing stop, that order will be cancelled.
 if (strategy.opentrades > 0 and strategy.opentrades.size(0) < 0 and trade_direction == 1)
-    strategy.close_all()
+    strategy.close_all("Direction Exit")
+    alert(shortAlertExitMessage, alert.freq_once_per_bar_close)

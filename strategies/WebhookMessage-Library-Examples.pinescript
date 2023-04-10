@@ -1,0 +1,115 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradersPostInc
+
+import TradersPostInc/WebhookMessage/1 as wm
+cnst = wm.CONSTANTS.new()
+
+//@version=5
+strategy("WebhookMessage Test Strategy", overlay=true, margin_long=100, margin_short=100)
+
+// go long 1 with a trailing stop of 0.75%
+if (hour == 1 and minute == 0)
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_BUY,
+      sentiment = cnst.SENTIMENT_BULLISH,
+      quantity = 1,
+      stopLoss = wm.stopLossMessage.new(type = cnst.STOP_LOSS_TYPE_TRAILING_STOP, trailPercent = 0.75).buildStopLossJson()
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.green, textcolor = color.white, size = size.normal)
+
+// add 1 contract
+if (hour == 2 and minute == 0)
+    msg = wm.webhookMessage.new(
+      action = cnst.ACTION_ADD,
+      quantity = 1
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.purple, textcolor = color.white, size = size.normal)
+
+// cancel all open orders
+if (hour == 3 and minute == 0)
+    msg = wm.webhookMessage.new(
+      action = cnst.ACTION_CANCEL
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.fuchsia, textcolor = color.white, size = size.normal)
+
+// exit the long positions
+if (hour == 4 and minute == 0)
+    msg = wm.webhookMessage.new(
+      action = cnst.ACTION_EXIT
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.gray, textcolor = color.white, size = size.normal)
+
+// go short 1 with a trailing stop amount of $0.50
+if (hour == 5 and minute == 0)
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_SELL,
+      sentiment = cnst.SENTIMENT_BEARISH,
+      quantity = 1,
+      stopLoss = wm.stopLossMessage.new(type = cnst.STOP_LOSS_TYPE_TRAILING_STOP, trailPrice = 0.5).buildStopLossJson()
+      ).buildWebhookJson()
+    label.new(bar_index, high, msg, color = color.red, textcolor = color.white, size = size.normal)
+
+// flatten the short position
+if (hour == 6 and minute == 0)
+    msg = wm.webhookMessage.new(
+      action = cnst.ACTION_BUY,
+      sentiment = cnst.SENTIMENT_FLAT
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.gray, textcolor = color.white, size = size.normal)
+
+// go long without a quantity so that TradersPost configuration for quantity is used
+// also, add a take profit 10% above the market price
+if (hour == 7 and minute == 0)
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_BUY,
+      sentiment = cnst.SENTIMENT_BULLISH,
+      takeProfit = wm.takeProfitMessage.new(percent = 10).buildTakeProfitJson()
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.green, textcolor = color.white, size = size.normal)
+
+// go long with a 4% take profit limit price and -2% stop loss limit price
+if (hour == 8 and minute == 0)
+    takeProfitPrice = close * 1.04
+    stopLossPrice = close * 0.98
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_BUY,
+      sentiment = cnst.SENTIMENT_BULLISH,
+      takeProfit = wm.takeProfitMessage.new(limitPrice = takeProfitPrice).buildTakeProfitJson(),
+      stopLoss = wm.stopLossMessage.new(limitPrice = stopLossPrice).buildStopLossJson()
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.green, textcolor = color.white, size = size.normal)
+
+// go long with a trailing stop $2 away
+if (hour == 9 and minute == 0)
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_BUY,
+      stopLoss = wm.stopLossMessage.new(trailPrice = 2).buildStopLossJson()
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.green, textcolor = color.white, size = size.normal)
+
+// go long with a stop limit trigger at 4100, but a limitPrice of 4101
+if (hour == 10 and minute == 0)
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_BUY,
+      stopLoss = wm.stopLossMessage.new(stopPrice = 4100, limitPrice = 4101).buildStopLossJson()
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.green, textcolor = color.white, size = size.normal)
+
+// go long with every parameter set
+if (hour == 11 and minute == 0)
+    msg = wm.webhookMessage.new(
+      ticker = syminfo.ticker,
+      action = cnst.ACTION_BUY,
+      sentiment = cnst.SENTIMENT_BULLISH,
+      price = close,
+      quantity = 10,
+      takeProfit = wm.takeProfitMessage.new(percent = 5).buildTakeProfitJson(),
+      stopLoss = wm.stopLossMessage.new(type = cnst.STOP_LOSS_TYPE_STOP_LIMIT, stopPrice = 4100, limitPrice = 4101).buildStopLossJson()
+      ).buildWebhookJson()
+    label.new(bar_index, low, msg, color = color.green, textcolor = color.white, size = size.normal)

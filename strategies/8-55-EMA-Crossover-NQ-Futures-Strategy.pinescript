@@ -5,6 +5,9 @@
 // by TradersPost are for informational or educational purposes only and do not constitute trading or
 // investment recommendations or advice.
 
+import TradersPostInc/WebhookMessage/1 as wm
+cnst = wm.CONSTANTS.new()
+
 // @version=5
 strategy("8-55 EMA Crossover NQ/MNQ Futures Strategy", shorttitle="8-55 Cross", overlay=true, initial_capital = 5000, pyramiding = 1, default_qty_type = strategy.fixed, default_qty_value = 1, calc_on_every_tick = true, process_orders_on_close = false, use_bar_magnifier = false, commission_type = strategy.commission.cash_per_contract, commission_value = 0.82, slippage = 5)
 max_bars_back(time, 5000)
@@ -310,7 +313,13 @@ long_condition = l_cond0 and l_cond1 and l_cond2 and l_cond3 and l_cond4
 plotchar(long_condition, "LONG ENTRY", "◆", location.abovebar, color.green, size = size.tiny)
 
 if (allow_long == true and strategy.opentrades < defaultQty and long_condition and barstate.isconfirmed)
-    longAlertMessage = '{"ticker": "' + syminfo.ticker + '", "action": "buy", "quantity": ' + str.tostring(defaultQty) + ',"price": ' + str.tostring(close) + (attachTrail == true ? ', "stopLoss": {"type": "trailing_stop", "trailPercent": ' + str.tostring(longTrailPerc * 100) + '}' : '') + '}'
+    longAlertMessage = wm.webhookMessage.new(
+      action = cnst.ACTION_BUY,
+      quantity = defaultQty,
+      price = close,
+      stopLoss = attachTrail == true ? wm.stopLossMessage.new(type=cnst.STOP_LOSS_TYPE_TRAILING_STOP, trailPercent = longTrailPerc * 100).buildStopLossJson() : ""
+      ).buildWebhookJson()
+
     alert(longAlertMessage, alert.freq_once_per_bar)
     strategy.entry("Long Entry", direction=strategy.long, qty=defaultQty)
 
@@ -323,7 +332,7 @@ else
 
 plot(series=(strategy.position_size > 0) ? longStopPrice : na, color=color.fuchsia, style=plot.style_cross, linewidth=1, title="Long Trail Stop")
 
-longAlertExitMessage = '{"ticker": "' + syminfo.ticker + '", "action": "exit", "price": ' + str.tostring(close) + '}'
+longAlertExitMessage = wm.webhookMessage.new(action = cnst.ACTION_EXIT, price = close).buildWebhookJson()
 
 // Trailing stop signal is sent to TradersPost. Be sure your alert uses "alert() function calls only"
 // for this to function properly.
@@ -363,7 +372,12 @@ short_condition = s_cond0 and s_cond1 and s_cond2 and s_cond3 and s_cond4 and s_
 plotchar(short_condition, "SHORT ENTRY", "◆", location.belowbar, color.red, size = size.tiny)
 
 if (allow_short == true and strategy.opentrades < defaultQty and short_condition and barstate.isconfirmed)
-    shortAlertMessage = '{"ticker": "' + syminfo.ticker + '", "action": "sell", "quantity": ' + str.tostring(defaultQty) + ',"price": ' + str.tostring(close) + (attachTrail == true ? ', "stopLoss": {"type": "trailing_stop", "trailPercent": ' + str.tostring(shortTrailPerc * 100) + '}' : '') + '}'
+    shortAlertMessage = wm.webhookMessage.new(
+      action = cnst.ACTION_SELL,
+      quantity = defaultQty,
+      price = close,
+      stopLoss = attachTrail == true ? wm.stopLossMessage.new(type=cnst.STOP_LOSS_TYPE_TRAILING_STOP, trailPercent = shortTrailPerc * 100).buildStopLossJson() : ""
+      ).buildWebhookJson()
     alert(shortAlertMessage, alert.freq_once_per_bar)
     strategy.entry("Short Entry", direction=strategy.short, qty=defaultQty)
 
@@ -376,7 +390,7 @@ else
 
 plot(series=(strategy.position_size < 0) ? shortStopPrice : na, color=color.fuchsia, style=plot.style_cross, linewidth=1, title="Short Trail Stop")
 
-shortAlertExitMessage = '{"ticker": "' + syminfo.ticker + '", "action": "exit", "price": ' + str.tostring(close) + '}'
+shortAlertExitMessage = wm.webhookMessage.new(action = cnst.ACTION_EXIT, price = close).buildWebhookJson()
 
 // Trailing stop signal is sent to TradersPost. Be sure your alert uses "alert() function calls only"
 // for this to function properly.

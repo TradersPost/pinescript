@@ -1,0 +1,54 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TradersPost, Inc (traderspost.io)
+
+//@strategy_alert_message {{strategy.order.alert_message}}
+
+//@version=6
+strategy("Simple Strategy", overlay=true, fill_orders_on_standard_ohlc = true, process_orders_on_close = true)
+
+method tags(string str) =>
+    msg = str
+
+    msg := str.replace_all(msg, '{{exchange}}', syminfo.prefix)
+    msg := str.replace_all(msg, '{{ticker}}', syminfo.ticker)
+    msg := str.replace_all(msg, '{{close}}', str.tostring(close))
+    msg := str.replace_all(msg, '{{open}}', str.tostring(open))
+    msg := str.replace_all(msg, '{{high}}', str.tostring(high))
+    msg := str.replace_all(msg, '{{low}}', str.tostring(low))
+    msg := str.replace_all(msg, '{{time}}', str.tostring(time))
+    msg := str.replace_all(msg, '{{volume}}', str.tostring(volume))
+    msg := str.replace_all(msg, '{{timenow}}', str.tostring(timenow))
+    msg := str.replace_all(msg, '{{interval}}', timeframe.period)
+    msg := str.replace_all(msg, '{{syminfo.currency}}', syminfo.currency)
+    msg := str.replace_all(msg, '{{syminfo.basecurrency}}', syminfo.basecurrency)
+
+    log.info(msg)
+
+    msg
+
+tradeDirection = input.string("Both", title = "Trade Direction", options = ['Both', 'Long Only', 'Short Only'])
+group1 = "Alert Messages"
+longEntryMessage = input.text_area('{\n"ticker": "{{ticker}}",\n"action": "buy",\n"price": "{{close}}",\n"time": "{{timenow}}",\n"my message": "this came from simple strategy"\n}', title = "Long Entry", group = group1)
+longExitMessage = input.text_area('{\n"ticker": "{{ticker}}",\n"action": "exit",\n"price": "{{close}}",\n"time": "{{timenow}}",\n"my message": "this came from simple strategy"\n}', title = "Long Exit", group = group1)
+shortEntryMessage = input.text_area('{\n"ticker": "{{ticker}}",\n"action": "sell",\n"price": "{{close}}",\n"time": "{{timenow}}",\n"my message": "this came from simple strategy"\n}', title = "Short Entry", group = group1)
+shortExitMessage = input.text_area('{\n"ticker": "{{ticker}}",\n"action": "exit",\n"price": "{{close}}",\n"time": "{{timenow}}",\n"my message": "this came from simple strategy"\n}', title = "Short Exit", group = group1)
+
+var longAllowed = tradeDirection == 'Both' or tradeDirection == 'Long Only'
+var shortAllowed = tradeDirection == 'Both' or tradeDirection == 'Short Only'
+
+longCondition = longAllowed and close > close[1]
+shortCondition = shortAllowed and close < close[1]
+
+if (longCondition)
+    strategy.entry("Entry Long", strategy.long, alert_message = longEntryMessage.tags())
+else if (strategy.position_size > 0)
+    strategy.close("Entry Long", comment = "Close", alert_message = longExitMessage.tags())
+else if (shortCondition)
+    strategy.entry("Entry Short", strategy.short, alert_message = shortEntryMessage.tags())
+else if (strategy.position_size < 0)
+    strategy.close("Entry Short", comment = "Close", alert_message = shortExitMessage.tags())
+
+if (barstate.islastconfirmedhistory)
+    var tbl = table.new(position.bottom_right, 1, 2)
+    tbl.cell(0, 0, "This is an example strategy designed to illustrate how\nto send trade messages to TradersPost for the automation\nof strategies and indicators. It should not be traded on live capital.\n\nPlease see:\nhttps://docs.traderspost.io/docs/core-concepts/webhooks\nfor complete details on how these messages work.", text_color = chart.fg_color, bgcolor = chart.bg_color, text_size = 12, text_halign = text.align_right)
+    tbl.cell(0, 1, "\nTradersPost, Inc", text_formatting = text.format_bold, text_color = chart.fg_color, bgcolor = chart.bg_color, text_size = 14, text_halign = text.align_right)

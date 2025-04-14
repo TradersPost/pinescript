@@ -1,0 +1,46 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © bluedini
+
+//@version=5
+strategy("RSI Oversold Strategy", slippage = 3, overlay = true, initial_capital = 100000, max_labels_count = 500)
+
+import bluedini/utils/26 as utils
+
+startDate = input.time(title = "Start Date", defval = timestamp("01 Mar 2024 00:00:01 GMT-4"))
+isMarketOpen = utils.timeinrange("1", "0930-1550:23456", "America/New_York")
+isBuySession = utils.timeinrange("1", "0630-1545:23456", "America/New_York")
+isEndOfSession = time_close(timeframe.period, "1540-1545", "America/New_York")
+
+hasPosition = strategy.position_size != 0
+openProfit = strategy.opentrades.profit(0)
+
+timeNow = time(timeframe.period)
+isAfterStartDate = timeNow >= startDate
+
+targetTickerInput = input.string(title = "Target Ticker Long", defval = "ES")
+
+rsiLengthInput = input.int(5, "RSI Length", group = "RSI Settings", minval = 1)
+rsi4hrBuyThresholdInput = input.int(11, "RSI Buy Threshold 4h", group = "RSI Settings", minval = 1, maxval = 100)
+rsi1hrBuyThresholdInput = input.int(17, "RSI Buy Threshold 1h", group = "RSI Settings", minval = 1, maxval = 100)
+rsi15mBuyThresholdInput = input.int(16, "RSI Buy Threshold 15m", group = "RSI Settings", minval = 1, maxval = 100)
+profitTargetInput = input.int(500, "Profit Target", minval = 0)
+
+rsi = ta.rsi(close, rsiLengthInput)
+rsi1hr = request.security(syminfo.tickerid, "60", rsi, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+rsi4hr = request.security(syminfo.tickerid, "240", rsi, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+
+buyAlert = not hasPosition and rsi4hr < rsi4hrBuyThresholdInput and rsi1hr < rsi1hrBuyThresholdInput and rsi < rsi15mBuyThresholdInput
+
+sellAlert = hasPosition and openProfit > profitTargetInput
+
+targetTickerClose = request.security(targetTickerInput, "", close)
+buyPrice = str.format("{0,number,#.##}", targetTickerClose)
+
+signalName = "RSI_OVERSOLD_" + str.tostring(timeframe.period)
+buyAlertMessage = '{"action": "buy", "signal": "'+ signalName +'", "ticker": "' + targetTickerInput + '", "price": "' + buyPrice + '"}'
+sellAlertMessage = '{"action": "exit", "signal": "'+ signalName +'", "ticker": "' + targetTickerInput + '", "price": "' + buyPrice + '"}'
+
+if buyAlert
+    strategy.entry(signalName, comment = "+", alert_message = buyAlertMessage, direction = strategy.long, qty = 3)
+if sellAlert
+    strategy.close(signalName, comment = "-", alert_message = sellAlertMessage)
